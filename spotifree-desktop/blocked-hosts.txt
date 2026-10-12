@@ -1,0 +1,15 @@
+# Conservative ad hosts. General Spotify media and login hosts are untouched.
+doubleclick.net
+googlesyndication.com
+googleadservices.com
+adnxs.com
+adsrvr.org
+scorecardresearch.com
+ads-akp.spotify.com
+ads-fa.spotify.com
+ads-fa.scdn.co
+audio-ads.spotify.com
+mp3ad.scdn.co
+adstudio.spotify.com
+adstudio-assets.scdn.co
+adeventtracker.spotify.com
