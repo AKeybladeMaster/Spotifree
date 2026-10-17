@@ -23,6 +23,7 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.inputmethod.EditorInfo;
 import android.webkit.CookieManager;
+import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -35,6 +36,9 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.lang.ref.WeakReference;
 import java.net.URLEncoder;
@@ -50,16 +54,6 @@ public final class MainActivity extends Activity {
         "return {hasMedia:has,title:(d&&d.title)||document.title||'Spotify Web Player',artist:(d&&d.artist)||''," +
         "playing:m?!m.paused:!!(s&&s.playbackState==='playing'),position:m&&isFinite(m.currentTime)?Math.round(m.currentTime*1000):0," +
         "duration:m&&isFinite(m.duration)?Math.round(m.duration*1000):0};})()";
-    private static final String PLAYBACK_DIAGNOSTICS_SCRIPT = "(async function(){var r={ua:navigator.userAgent,secureContext:isSecureContext," +
-        "mediaSource:!!window.MediaSource,emeApi:typeof navigator.requestMediaKeySystemAccess==='function'};" +
-        "try{r.uaData=navigator.userAgentData?{mobile:navigator.userAgentData.mobile,platform:navigator.userAgentData.platform," +
-        "brands:navigator.userAgentData.brands.map(function(x){return x.brand+'/'+x.version;})}:null;}catch(e){r.uaData='unavailable';}" +
-        "var a=document.createElement('audio');r.audioOgg=!!a.canPlayType('audio/ogg; codecs=\"vorbis\"');" +
-        "r.audioMp4=!!a.canPlayType('audio/mp4; codecs=\"mp4a.40.2\"');" +
-        "if(r.emeApi){try{await navigator.requestMediaKeySystemAccess('com.widevine.alpha',[{initDataTypes:['cenc']," +
-        "audioCapabilities:[{contentType:'audio/mp4; codecs=\"mp4a.40.2\"'}]}]);r.widevineEme='available';}" +
-        "catch(e){r.widevineEme=e.name+': '+e.message;}}else{r.widevineEme='EME API unavailable';}" +
-        "return JSON.stringify(r);})()";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private HiddenHostFilter hiddenFilter;
@@ -76,6 +70,9 @@ public final class MainActivity extends Activity {
     private String webViewProvider = "Unknown";
     private boolean nativeWidevineSupported;
     private String pagePlaybackDiagnostics = "Open Spotify to run browser capability checks.";
+    private String playbackDiagnosticsScript;
+    private int diagnosticsGeneration;
+    private String protectedMediaPermission = "Not requested";
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -167,6 +164,13 @@ public final class MainActivity extends Activity {
     @SuppressWarnings("SetJavaScriptEnabled")
     private void configureWebView() {
         hiddenFilter = new HiddenHostFilter(this);
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                getAssets().open("playback-diagnostics.js"), "UTF-8"))) {
+            StringBuilder script = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) script.append(line).append('\n');
+            playbackDiagnosticsScript = script.toString();
+        } catch (IOException ignored) { pagePlaybackDiagnostics = "Diagnostics asset could not be loaded."; }
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -182,7 +186,7 @@ public final class MainActivity extends Activity {
         // Present the real Android Chromium engine as mobile Chrome. Keep its actual
         // version and Android identity; remove only Android WebView-specific markers.
         String spotifyUserAgent = asAndroidChromeUserAgent(nativeUserAgent);
-        if (!spotifyUserAgent.equals(nativeUserAgent)) settings.setUserAgentString(spotifyUserAgent);
+        if (spotifyUserAgent != null && !spotifyUserAgent.equals(nativeUserAgent)) settings.setUserAgentString(spotifyUserAgent);
         webViewProvider = getWebViewProviderVersion();
         try {
             nativeWidevineSupported = MediaDrm.isCryptoSchemeSupported(
@@ -192,11 +196,29 @@ public final class MainActivity extends Activity {
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient() {
+            @Override public void onPermissionRequest(PermissionRequest request) {
+                // This callback is on the UI thread. Never grant camera, microphone,
+                // or arbitrary future resources along with protected playback.
+                String[] allowed = ProtectedMediaPolicy.allowedResources(
+                    request.getOrigin() == null ? null : request.getOrigin().toString(),
+                    webView == null ? null : webView.getUrl(), request.getResources());
+                if (allowed.length == 0) {
+                    request.deny();
+                    protectedMediaPermission = "Denied: origin or resource is not allowed";
+                } else {
+                    request.grant(allowed);
+                    protectedMediaPermission = "Granted for https://open.spotify.com";
+                }
+            }
             @Override public void onProgressChanged(WebView view, int progress) {
                 if (status != null && progress < 100) status.setText("Loading " + progress + "%");
             }
         });
         webView.setWebViewClient(new WebViewClient() {
+            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                diagnosticsGeneration++;
+                pagePlaybackDiagnostics = "Waiting for the Spotify player to finish loading.";
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String scheme = uri.getScheme();
@@ -215,14 +237,8 @@ public final class MainActivity extends Activity {
                 if (webViewChromeMajor > 0 && webViewChromeMajor < MINIMUM_SPOTIFY_CHROME_VERSION)
                     status.setText("Update Chrome / Android System WebView to version 87 or newer.");
                 else status.setText(title == null || title.trim().isEmpty() ? "Spotify Web Player" : title);
-                view.evaluateJavascript(PLAYBACK_DIAGNOSTICS_SCRIPT, value -> {
-                    if (value == null || "null".equals(value)) return;
-                    try {
-                        Object decoded = new org.json.JSONTokener(value).nextValue();
-                        pagePlaybackDiagnostics = decoded instanceof String ? (String) decoded : decoded.toString();
-                    } catch (Exception ignored) { pagePlaybackDiagnostics = value; }
-                });
                 if (isSpotifyPlayer(url)) {
+                    runPlaybackDiagnostics();
                     if (pendingControl != null) { String action = pendingControl; pendingControl = null; performControl(action); }
                     startPolling();
                 } else stopPolling();
@@ -280,9 +296,32 @@ public final class MainActivity extends Activity {
     }
 
     private boolean isSpotifyPlayer(String rawUrl) {
-        if (rawUrl == null) return false;
-        Uri uri = Uri.parse(rawUrl);
-        return "https".equalsIgnoreCase(uri.getScheme()) && "open.spotify.com".equalsIgnoreCase(uri.getHost());
+        return ProtectedMediaPolicy.isPlayerUrl(rawUrl);
+    }
+
+    private void runPlaybackDiagnostics() {
+        if (webView == null || !isSpotifyPlayer(webView.getUrl()) || playbackDiagnosticsScript == null) return;
+        int generation = ++diagnosticsGeneration;
+        pagePlaybackDiagnostics = "Checking Widevine and browser capabilities...";
+        // evaluateJavascript does not await Promises. The asset stores its completed
+        // result in the page; read that result separately, with a bounded wait.
+        webView.evaluateJavascript(playbackDiagnosticsScript, ignored -> readPlaybackDiagnostics(generation, 0));
+    }
+
+    private void readPlaybackDiagnostics(int generation, int attempt) {
+        if (generation != diagnosticsGeneration || webView == null || !isSpotifyPlayer(webView.getUrl())) return;
+        webView.evaluateJavascript("window.__spotifreePlaybackDiagnostics || null", value -> {
+            if (generation != diagnosticsGeneration || webView == null) return;
+            boolean pending = true;
+            try {
+                JSONObject result = new JSONObject(value);
+                pagePlaybackDiagnostics = result.toString(2);
+                pending = "pending".equals(result.optString("status", "pending"));
+            } catch (Exception ignored) { pagePlaybackDiagnostics = "Waiting for the browser diagnostic result..."; }
+            if (pending && attempt < 12)
+                handler.postDelayed(() -> readPlaybackDiagnostics(generation, attempt + 1), 1000L);
+            else if (pending) pagePlaybackDiagnostics += "\nDiagnostic collection timed out. Reload to retry.";
+        });
     }
 
     private int getChromeMajorVersion(String userAgent) {
@@ -310,10 +349,14 @@ public final class MainActivity extends Activity {
 
     private void showWebViewDiagnostics() {
         String engineVersion = webViewChromeMajor > 0 ? Integer.toString(webViewChromeMajor) : "Unknown";
-        String details = "Android API: " + Build.VERSION.SDK_INT +
+        String appVersion;
+        try { appVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
+        catch (PackageManager.NameNotFoundException ignored) { appVersion = "Unknown"; }
+        String details = "Spotifree: " + appVersion + "\nAndroid API: " + Build.VERSION.SDK_INT +
             "\nWebView provider: " + webViewProvider +
             "\nChromium/Chrome major: " + engineVersion +
             "\nNative Widevine: " + (nativeWidevineSupported ? "available" : "unavailable") +
+            "\nProtected media permission: " + protectedMediaPermission +
             "\nUser-Agent:\n" + (webView == null ? "Unavailable" : webView.getSettings().getUserAgentString()) +
             "\n\nWeb page checks:\n" + pagePlaybackDiagnostics;
         TextView text = new TextView(this);
@@ -413,6 +456,8 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        diagnosticsGeneration++;
+        handler.removeCallbacksAndMessages(null);
         stopPolling();
         if (active.get() == this) active = new WeakReference<MainActivity>(null);
         if (isFinishing()) stopService(new Intent(this, PlaybackService.class));
