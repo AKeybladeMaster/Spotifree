@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/Windows-C%23-512BD4?style=flat-square&amp;logo=dotnet&amp;logoColor=white" alt="Windows with C Sharp" />
   <img src="https://img.shields.io/badge/Browser-WebView-0078D4?style=flat-square" alt="WebView" />
   <img src="https://img.shields.io/badge/Build-PowerShell-5391FE?style=flat-square&amp;logo=powershell&amp;logoColor=white" alt="PowerShell build scripts" />
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square&amp;logo=gnu&amp;logoColor=white" alt="License GPL-3.0" /></a>
 </p>
 
 # Spotifree
