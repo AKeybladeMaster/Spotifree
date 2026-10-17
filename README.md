@@ -92,3 +92,7 @@ on their target OS, including DRM/login checks.
 
 See [architecture](docs/SPEC-1-spotifree-v1.md) and
 [forensic notes](docs/FORENSICS.md) for detailed constraints.
+
+## Windows and Android v2 builds
+
+The legacy-style Java Android and C# WebView2 Windows implementations are in `spotifree-android-v2/` and `spotifree-desktop-v2/`. Build both from the repository root with `powershell -ExecutionPolicy Bypass -File .\build.ps1`; select a single target with `-Target android` or `-Target desktop`. APK and EXE outputs are written to each app folder's `dist/`. These v2 apps have a single persistent browser profile, no profile-switching UI, and no visible ad-filter controls.
