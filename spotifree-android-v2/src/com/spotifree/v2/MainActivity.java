@@ -2,11 +2,16 @@ package com.spotifree.v2;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.media.MediaDrm;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -27,11 +32,13 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import org.json.JSONObject;
 import java.io.UnsupportedEncodingException;
 import java.lang.ref.WeakReference;
 import java.net.URLEncoder;
+import java.util.UUID;
 
 public final class MainActivity extends Activity {
     private static final String HOME = "https://open.spotify.com/";
@@ -43,6 +50,16 @@ public final class MainActivity extends Activity {
         "return {hasMedia:has,title:(d&&d.title)||document.title||'Spotify Web Player',artist:(d&&d.artist)||''," +
         "playing:m?!m.paused:!!(s&&s.playbackState==='playing'),position:m&&isFinite(m.currentTime)?Math.round(m.currentTime*1000):0," +
         "duration:m&&isFinite(m.duration)?Math.round(m.duration*1000):0};})()";
+    private static final String PLAYBACK_DIAGNOSTICS_SCRIPT = "(async function(){var r={ua:navigator.userAgent,secureContext:isSecureContext," +
+        "mediaSource:!!window.MediaSource,emeApi:typeof navigator.requestMediaKeySystemAccess==='function'};" +
+        "try{r.uaData=navigator.userAgentData?{mobile:navigator.userAgentData.mobile,platform:navigator.userAgentData.platform," +
+        "brands:navigator.userAgentData.brands.map(function(x){return x.brand+'/'+x.version;})}:null;}catch(e){r.uaData='unavailable';}" +
+        "var a=document.createElement('audio');r.audioOgg=!!a.canPlayType('audio/ogg; codecs=\"vorbis\"');" +
+        "r.audioMp4=!!a.canPlayType('audio/mp4; codecs=\"mp4a.40.2\"');" +
+        "if(r.emeApi){try{await navigator.requestMediaKeySystemAccess('com.widevine.alpha',[{initDataTypes:['cenc']," +
+        "audioCapabilities:[{contentType:'audio/mp4; codecs=\"mp4a.40.2\"'}]}]);r.widevineEme='available';}" +
+        "catch(e){r.widevineEme=e.name+': '+e.message;}}else{r.widevineEme='EME API unavailable';}" +
+        "return JSON.stringify(r);})()";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private HiddenHostFilter hiddenFilter;
@@ -56,6 +73,9 @@ public final class MainActivity extends Activity {
     private boolean lastHadMedia;
     private boolean polling;
     private int webViewChromeMajor = -1;
+    private String webViewProvider = "Unknown";
+    private boolean nativeWidevineSupported;
+    private String pagePlaybackDiagnostics = "Open Spotify to run browser capability checks.";
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -112,6 +132,7 @@ public final class MainActivity extends Activity {
         addButton(navigation, "Forward", v -> { if (webView != null && webView.canGoForward()) webView.goForward(); });
         addButton(navigation, "Home", v -> navigate(HOME));
         addButton(navigation, "Reload", v -> { if (webView != null) webView.reload(); });
+        addButton(navigation, "Info", v -> showWebViewDiagnostics());
         root.addView(navigation, new LinearLayout.LayoutParams(-1, dp(48)));
 
         LinearLayout media = new LinearLayout(this);
@@ -156,9 +177,17 @@ public final class MainActivity extends Activity {
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        // Keep Android WebView's native mobile UA and client hints in sync. Spotify's
-        // Android web player requires Chrome 87+; a desktop UA can be rejected.
-        webViewChromeMajor = getChromeMajorVersion(settings.getUserAgentString());
+        String nativeUserAgent = settings.getUserAgentString();
+        webViewChromeMajor = getChromeMajorVersion(nativeUserAgent);
+        // Present the real Android Chromium engine as mobile Chrome. Keep its actual
+        // version and Android identity; remove only Android WebView-specific markers.
+        String spotifyUserAgent = asAndroidChromeUserAgent(nativeUserAgent);
+        if (!spotifyUserAgent.equals(nativeUserAgent)) settings.setUserAgentString(spotifyUserAgent);
+        webViewProvider = getWebViewProviderVersion();
+        try {
+            nativeWidevineSupported = MediaDrm.isCryptoSchemeSupported(
+                UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"));
+        } catch (RuntimeException ignored) { nativeWidevineSupported = false; }
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(webView, true);
@@ -186,6 +215,13 @@ public final class MainActivity extends Activity {
                 if (webViewChromeMajor > 0 && webViewChromeMajor < MINIMUM_SPOTIFY_CHROME_VERSION)
                     status.setText("Update Chrome / Android System WebView to version 87 or newer.");
                 else status.setText(title == null || title.trim().isEmpty() ? "Spotify Web Player" : title);
+                view.evaluateJavascript(PLAYBACK_DIAGNOSTICS_SCRIPT, value -> {
+                    if (value == null || "null".equals(value)) return;
+                    try {
+                        Object decoded = new org.json.JSONTokener(value).nextValue();
+                        pagePlaybackDiagnostics = decoded instanceof String ? (String) decoded : decoded.toString();
+                    } catch (Exception ignored) { pagePlaybackDiagnostics = value; }
+                });
                 if (isSpotifyPlayer(url)) {
                     if (pendingControl != null) { String action = pendingControl; pendingControl = null; performControl(action); }
                     startPolling();
@@ -255,6 +291,43 @@ public final class MainActivity extends Activity {
         if (!matcher.find()) return -1;
         try { return Integer.parseInt(matcher.group(1)); }
         catch (NumberFormatException ignored) { return -1; }
+    }
+
+    private String asAndroidChromeUserAgent(String userAgent) {
+        if (userAgent == null || !userAgent.contains("Android")) return userAgent;
+        return userAgent.replaceFirst(";\\s*wv\\)", ")")
+            .replaceFirst("\\sVersion/4\\.0(?=\\s)", "")
+            .replaceFirst("\\s+Build/[^;)]*", "");
+    }
+
+    private String getWebViewProviderVersion() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            PackageInfo provider = WebView.getCurrentWebViewPackage();
+            if (provider != null) return provider.packageName + " " + provider.versionName;
+        }
+        return "Not available on this Android version";
+    }
+
+    private void showWebViewDiagnostics() {
+        String engineVersion = webViewChromeMajor > 0 ? Integer.toString(webViewChromeMajor) : "Unknown";
+        String details = "Android API: " + Build.VERSION.SDK_INT +
+            "\nWebView provider: " + webViewProvider +
+            "\nChromium/Chrome major: " + engineVersion +
+            "\nNative Widevine: " + (nativeWidevineSupported ? "available" : "unavailable") +
+            "\nUser-Agent:\n" + (webView == null ? "Unavailable" : webView.getSettings().getUserAgentString()) +
+            "\n\nWeb page checks:\n" + pagePlaybackDiagnostics;
+        TextView text = new TextView(this);
+        text.setText(details);
+        text.setTextIsSelectable(true);
+        text.setPadding(dp(16), dp(12), dp(16), dp(12));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(text);
+        new AlertDialog.Builder(this).setTitle("WebView diagnostics").setView(scroll)
+            .setPositiveButton("Copy", (dialog, which) -> {
+                ClipboardManager clipboard = (ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("Spotifree diagnostics", details));
+            })
+            .setNegativeButton("Close", null).show();
     }
 
     private void dispatchControl(String action) {
