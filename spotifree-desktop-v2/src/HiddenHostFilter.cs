@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
-namespace SpotifreeDesktopV2
+namespace SpotifreeDesktop
 {
     internal sealed class HiddenHostFilter
     {

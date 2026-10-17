@@ -7,12 +7,12 @@ using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
-namespace SpotifreeDesktopV2
+namespace SpotifreeDesktop
 {
     internal sealed class PlayerForm : Form
     {
         private const string Home = "https://open.spotify.com/";
-        private readonly string dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SpotifreeDesktopV2");
+        private readonly string dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SpotifreeDesktop");
         private readonly Panel webHost = new Panel();
         private readonly TextBox searchBox = new TextBox();
         private readonly Label status = new Label();

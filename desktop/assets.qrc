@@ -1,6 +1,0 @@
-<RCC>
-  <qresource prefix="/spotifree">
-    <file alias="blocked-hosts.txt">assets/blocked-hosts.txt</file>
-    <file alias="spotifree.png">assets/spotifree.png</file>
-  </qresource>
-</RCC>

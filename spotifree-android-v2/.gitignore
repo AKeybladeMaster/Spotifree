@@ -1,0 +1,8 @@
+build/
+dist/
+*.apk
+*.aab
+*.exe
+*.dll
+*.jks
+*.keystore

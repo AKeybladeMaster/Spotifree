@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $project = (Resolve-Path -LiteralPath $PSScriptRoot).Path
-$sdk = if ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } elseif ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:TEMP 'spotifree-tools-20261012\android-sdk' }
+$sdkCandidates = @($env:ANDROID_SDK_ROOT, $env:ANDROID_HOME, (Join-Path $env:TEMP 'spotifree-tools-20261017\android-sdk'), (Join-Path $env:TEMP 'spotifree-tools-20261012\android-sdk')) | Where-Object { $_ }
+$sdk = $sdkCandidates | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'platforms\android-35\android.jar')) } | Select-Object -First 1
+if (!$sdk) { throw 'Android SDK platform 35 was not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.' }
 $androidJar = Join-Path $sdk 'platforms\android-35\android.jar'
 $tools = Join-Path $sdk 'build-tools\35.0.0'
 if (!(Test-Path -LiteralPath $androidJar)) { throw "Android SDK platform 35 is missing at $androidJar. Set ANDROID_SDK_ROOT." }
@@ -55,7 +57,7 @@ if (!(Test-Path -LiteralPath $key)) {
     & keytool.exe -genkeypair -keystore $key -alias spotifree-v2-debug -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Spotifree Debug,O=Local Build,C=US'
     if ($LASTEXITCODE -ne 0) { throw 'Debug signing key generation failed.' }
 }
-$apk = Join-Path $dist 'Spotifree-v2-debug.apk'
+$apk = Join-Path $dist 'spotifree-android.apk'
 & (Join-Path $tools 'apksigner.bat') sign --ks $key --ks-key-alias spotifree-v2-debug --ks-pass pass:android --key-pass pass:android --out $apk $aligned
 if ($LASTEXITCODE -ne 0) { throw 'APK signing failed.' }
 & (Join-Path $tools 'apksigner.bat') verify --verbose $apk

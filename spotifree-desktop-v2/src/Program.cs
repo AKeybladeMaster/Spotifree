@@ -1,6 +1,6 @@
 using System;
 using System.Windows.Forms;
-namespace SpotifreeDesktopV2
+namespace SpotifreeDesktop
 {
     internal static class Program
     {

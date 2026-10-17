@@ -1,4 +1,0 @@
-# Experimental host rules. Disabled by default; not part of the visible UI.
-# Modify only after confirming that the host is not essential for login/playback.
-doubleclick.net
-googleadservices.com

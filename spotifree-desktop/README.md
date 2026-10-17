@@ -1,7 +1,0 @@
-# Spotifree desktop
-
-An original C# WinForms/WebView2 wrapper for Spotify Web Player. The native shell provides navigation, Spotify search, play/pause/skip controls, multimedia-key support, isolated browser profiles and a conservative toggleable request filter. It uses the installed WebView2 runtime; streaming is performed by Spotify's site inside WebView2 and requires an account and supported playback environment.
-
-Run `build.ps1` in PowerShell to make `dist/Spotifree.exe`. It uses the WebView2 1.0.4258.31 SDK DLLs already in `dist/`, a full SDK pointed to by `WEBVIEW2_SDK_DIR`, or downloads that pinned package from NuGet and verifies its checksum. The compiled folder includes the two WebView2 managed libraries, native loader, and editable `blocked-hosts.txt`. The app creates each profile under `%LOCALAPPDATA%\SpotifreeDesktop\Profiles` so login cookies do not need to be exported or copied. Search uses Spotify's web search route. Ad filtering applies only to hostnames in the file, including ad-specific Spotify hosts. General media/CDN hosts are left untouched because blocking them can interrupt playback.
-
-The source is an independent implementation informed by behavioral analysis of the supplied APK; it does not embed its decompiled code, injected scripts, or original ad list. Spotify's site, login flow and DOM selectors can change independently of this application. WebView2 runtime is required on the target Windows machine.

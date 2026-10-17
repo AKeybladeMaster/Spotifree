@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $project = (Resolve-Path -LiteralPath $PSScriptRoot).Path
-$cache = Join-Path $env:TEMP 'spotifree-tools-20261012\webview2'
-$sdk = @($env:WEBVIEW2_SDK_DIR, $cache) | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'lib\net462\Microsoft.Web.WebView2.Core.dll')) } | Select-Object -First 1
+$cacheCandidates = @((Join-Path $env:TEMP 'spotifree-tools-20261017\webview2'), (Join-Path $env:TEMP 'spotifree-tools-20261012\webview2'))
+$sdk = @($env:WEBVIEW2_SDK_DIR) + $cacheCandidates | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'lib\net462\Microsoft.Web.WebView2.Core.dll')) } | Select-Object -First 1
 if (!$sdk) {
     $sdk = Join-Path $env:TEMP 'spotifree-v2-tools\webview2'
     $package = Join-Path $env:TEMP 'spotifree-v2-tools\webview2.1.0.4258.31.nupkg'
@@ -27,7 +27,7 @@ $compiler = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Ob
 if (!$compiler) { throw 'The .NET Framework C# compiler (csc.exe) is required to build the Windows desktop app.' }
 $output = Join-Path $project 'dist'
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-$exe = Join-Path $output 'Spotifree-v2.exe'
+$exe = Join-Path $output 'Spotifree-windows.exe'
 $sources = @(Get-ChildItem -Path (Join-Path $project 'src') -Filter '*.cs' -Recurse -File | ForEach-Object FullName)
 if ($sources.Count -lt 3) { throw 'Expected Program, PlayerForm, and HiddenHostFilter C# source files.' }
 & $compiler /nologo /target:winexe /platform:x64 "/out:$exe" /reference:System.dll /reference:System.Core.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll "/reference:$core" "/reference:$forms" @sources

@@ -1,3 +1,0 @@
-# Developer-only rules; filtering is off by default.
-doubleclick.net
-googleadservices.com
