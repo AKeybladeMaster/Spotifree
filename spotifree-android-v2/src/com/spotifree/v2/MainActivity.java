@@ -154,6 +154,10 @@ public final class MainActivity extends Activity {
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        java.util.regex.Matcher chrome = java.util.regex.Pattern.compile("Chrome/([0-9.]+)").matcher(settings.getUserAgentString());
+        if (chrome.find()) {
+            settings.setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + chrome.group(1) + " Safari/537.36");
+        }
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(webView, true);
