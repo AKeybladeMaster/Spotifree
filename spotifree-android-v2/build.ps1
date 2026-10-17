@@ -40,7 +40,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Android Java compilation failed.' }
 $classesJar = Join-Path $build 'classes.jar'
 & jar.exe --create --file $classesJar -C $classes .
 if ($LASTEXITCODE -ne 0) { throw 'Android class packaging failed.' }
-& java.exe -cp (Join-Path $tools 'lib\d8.jar') com.android.tools.r8.D8 --min-api 26 --lib $androidJar --output $dex $classesJar
+& java.exe -cp (Join-Path $tools 'lib\d8.jar') com.android.tools.r8.D8 --min-api 23 --lib $androidJar --output $dex $classesJar
 if ($LASTEXITCODE -ne 0) { throw 'Android DEX generation failed.' }
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem

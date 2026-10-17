@@ -76,7 +76,9 @@ public final class PlaybackService extends Service {
     private Notification buildNotification() {
         Intent open = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent content = PendingIntent.getActivity(this, 10, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this, CHANNEL).setSmallIcon(android.R.drawable.ic_media_play)
+        Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+            ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
+        return builder.setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(title).setContentText(artist).setContentIntent(content).setOngoing(playing)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .addAction(android.R.drawable.ic_media_previous, "Previous", activityAction(ACTION_PREVIOUS, 1))

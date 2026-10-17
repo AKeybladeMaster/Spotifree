@@ -36,6 +36,7 @@ import java.net.URLEncoder;
 public final class MainActivity extends Activity {
     private static final String HOME = "https://open.spotify.com/";
     private static final long POLL_MS = 1800L;
+    private static final int MINIMUM_SPOTIFY_CHROME_VERSION = 87;
     private static volatile WeakReference<MainActivity> active = new WeakReference<MainActivity>(null);
     private static final String STATE_SCRIPT = "(function(){var m=document.querySelector('audio,video'),s=navigator.mediaSession,d=s&&s.metadata;" +
         "var has=!!((d&&d.title)||(m&&(m.currentSrc||(m.readyState>0&&m.duration>0))));" +
@@ -54,6 +55,7 @@ public final class MainActivity extends Activity {
     private long lastStateAt;
     private boolean lastHadMedia;
     private boolean polling;
+    private int webViewChromeMajor = -1;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -154,10 +156,9 @@ public final class MainActivity extends Activity {
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        java.util.regex.Matcher chrome = java.util.regex.Pattern.compile("Chrome/([0-9.]+)").matcher(settings.getUserAgentString());
-        if (chrome.find()) {
-            settings.setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + chrome.group(1) + " Safari/537.36");
-        }
+        // Keep Android WebView's native mobile UA and client hints in sync. Spotify's
+        // Android web player requires Chrome 87+; a desktop UA can be rejected.
+        webViewChromeMajor = getChromeMajorVersion(settings.getUserAgentString());
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(webView, true);
@@ -182,7 +183,9 @@ public final class MainActivity extends Activity {
             }
             @Override public void onPageFinished(WebView view, String url) {
                 String title = view.getTitle();
-                status.setText(title == null || title.trim().isEmpty() ? "Spotify Web Player" : title);
+                if (webViewChromeMajor > 0 && webViewChromeMajor < MINIMUM_SPOTIFY_CHROME_VERSION)
+                    status.setText("Update Chrome / Android System WebView to version 87 or newer.");
+                else status.setText(title == null || title.trim().isEmpty() ? "Spotify Web Player" : title);
                 if (isSpotifyPlayer(url)) {
                     if (pendingControl != null) { String action = pendingControl; pendingControl = null; performControl(action); }
                     startPolling();
@@ -245,6 +248,15 @@ public final class MainActivity extends Activity {
         Uri uri = Uri.parse(rawUrl);
         return "https".equalsIgnoreCase(uri.getScheme()) && "open.spotify.com".equalsIgnoreCase(uri.getHost());
     }
+
+    private int getChromeMajorVersion(String userAgent) {
+        if (userAgent == null) return -1;
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\bChrome/(\\d+)(?:\\.|\\b)").matcher(userAgent);
+        if (!matcher.find()) return -1;
+        try { return Integer.parseInt(matcher.group(1)); }
+        catch (NumberFormatException ignored) { return -1; }
+    }
+
     private void dispatchControl(String action) {
         if (isSpotifyPlayer(webView == null ? null : webView.getUrl())) performControl(action);
         else { pendingControl = action; navigate(HOME); }
