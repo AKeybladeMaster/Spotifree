@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Spotifree
+Comment=Minimal Spotify Web Player wrapper
+Exec=Spotifree
+Icon=spotifree
+Terminal=false
+Categories=AudioVideo;Audio;Player;
